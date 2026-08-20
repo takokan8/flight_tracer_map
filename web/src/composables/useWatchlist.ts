@@ -3,6 +3,10 @@ import type { FlightBasic } from "../types/flight";
 
 const STORAGE_KEY = "flightWatchList";
 
+// Python/Flask版(flight_tracer/index.html)と同じ仕様
+export const WATCH_LIST_MAX = 250;
+export const WATCH_PAGE_SIZE = 5;
+
 function loadWatchList(): string[] {
   try {
     return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
@@ -33,6 +37,10 @@ export function useWatchlist() {
   function addToWatchlist(rawValue: string) {
     const value = rawValue.trim().toUpperCase();
     if (!value || watchList.value.includes(value)) return;
+    if (watchList.value.length >= WATCH_LIST_MAX) {
+      alert(`監視できる機体は最大${WATCH_LIST_MAX}件までです`);
+      return;
+    }
     watchList.value.push(value);
     watchStatus[value] = false;
     persist();
