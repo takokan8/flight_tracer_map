@@ -182,7 +182,7 @@ function buildPopupContent(
         <h3>✈️ ${flight.callsign || "Unknown"}</h3>
         <p><strong>航空会社:</strong> ${flight.airline || "Unknown"}</p>
         <p><strong>機種:</strong> ${flight.aircraft || "Unknown"}</p>
-        <p><strong>登録番号:</strong> ${flight.registration || "N/A"}</p>
+        <p><strong>登録番号:</strong> <span class="registration-badge">${flight.registration || "N/A"}</span></p>
         <div class="route">${flight.origin || "N/A"} → ${flight.destination || "N/A"}</div>
         <p><strong>高度:</strong> ${flight.altitude ? flight.altitude + " ft" : "N/A"}</p>
         <p><strong>速度:</strong> ${flight.speed ? flight.speed + " kts" : "N/A"}</p>
@@ -502,15 +502,15 @@ defineExpose({
   font-size: 11px;
   margin-top: 6px;
 }
-/* 登録番号行(3番目のp)のみ黒背景・白文字にして視認性を上げる。
-   HTML側の行順(航空会社→機種→登録番号)が変わると対象がずれるので、
-   行順を変更する場合はこのnth-of-type(3)も合わせて見直すこと */
-.flight-popup p:nth-of-type(3) {
-    background: #000;
+.registration-badge {
+    background: #1a1a1a;
     color: #fff;
-    padding: 2px 8px;
+    font-family: "Courier New", monospace;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+    padding: 2px 6px;
     border-radius: 3px;
-    display: inline-block;
+    font-size: 12px;
 }
 .flight-icon {
   filter: drop-shadow(1px 1px 2px rgba(0, 0, 0, 0.3));
