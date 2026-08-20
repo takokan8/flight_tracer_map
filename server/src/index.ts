@@ -264,12 +264,19 @@ if (hasStaticBuild && !process.env.VERCEL) {
     res.sendFile(path.join(STATIC_DIR, "index.html"));
   });
 }
-const PORT = process.env.PORT ? Number(process.env.PORT) : 5000;
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`[起動確認] Flight Tracer server listening on port ${PORT}`);
-  console.log(`[起動確認] static build: ${hasStaticBuild ? STATIC_DIR : "見つかりません(APIのみ)"}`);
-});
 
+//const PORT = process.env.PORT ? Number(process.env.PORT) : 5000;
+//app.listen(PORT, "0.0.0.0", () => {
+//  console.log(`[起動確認] Flight Tracer server listening on port ${PORT}`);
+//  console.log(`[起動確認] static build: ${hasStaticBuild ? STATIC_DIR : "見つかりません(APIのみ)"}`);
+//});
+const PORT = process.env.PORT ? Number(process.env.PORT) : 5000;
+if (require.main === module) {
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`[起動確認] Flight Tracer server listening on port ${PORT}`);
+    console.log(`[起動確認] static build: ${hasStaticBuild ? STATIC_DIR : "見つかりません(APIのみ)"}`);
+  });
+}
 // vercel 向け
 //export default app;
 export = app;
