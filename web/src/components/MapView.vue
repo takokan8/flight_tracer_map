@@ -468,14 +468,14 @@ defineExpose({
 
 /* Leafletポップアップ本体:すりガラス(グラスモーフィズム)効果 */
 .leaflet-popup-content-wrapper {
-  background: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.45);
   backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(2px);
 }
 .leaflet-popup-tip {
-  background: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.45);
   /* backdrop-filter: blur(12px);*/
-  -webkit-backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(2px);
 }
 
 .flight-popup {
