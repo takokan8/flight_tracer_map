@@ -465,6 +465,19 @@ defineExpose({
 
 <style>
 /* Leafletポップアップ内はグローバルHTML文字列として描画されるため scoped 外に定義する */
+
+/* Leafletポップアップ本体:すりガラス(グラスモーフィズム)効果 */
+.leaflet-popup-content-wrapper {
+  background: rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.leaflet-popup-tip {
+  background: rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
 .flight-popup {
   min-width: 260px;
 }
