@@ -12,9 +12,17 @@ app.use(cors());
 const frApi = new FlightRadar24API();
 
 // Vue(Vite)のビルド成果物(web/dist)を配信する。無ければAPIのみで起動する。
-const STATIC_DIR = path.join(__dirname, "..", "..", "web", "dist");
+//const STATIC_DIR = path.join(__dirname, "..", "..", "web", "dist");
+//const hasStaticBuild = fs.existsSync(path.join(STATIC_DIR, "index.html"));
+//if (hasStaticBuild) {
+//  app.use(express.static(STATIC_DIR));
+//}
+// vercel 向け設定
+const STATIC_DIR = path.join(__dirname, "..", "public");
 const hasStaticBuild = fs.existsSync(path.join(STATIC_DIR, "index.html"));
-if (hasStaticBuild) {
+// Vercel上ではpublic/**をCDNが直接配信するのでExpress側のstaticは不要(というより効かない)。
+// ローカルで node dist/index.js を単体実行して確認したい時だけ使う。
+if (hasStaticBuild && !process.env.VERCEL) {
   app.use(express.static(STATIC_DIR));
 }
 
@@ -245,14 +253,22 @@ app.get("/api/photo/:registration", async (req, res) => {
 });
 
 // SPAのルーティング用フォールバック(APIパス以外はindex.htmlを返す)
-if (hasStaticBuild) {
+//if (hasStaticBuild) {
+//  app.get(/^(?!\/api\/).*/, (req, res) => {
+//    res.sendFile(path.join(STATIC_DIR, "index.html"));
+//  });
+//}
+// vercel 向け
+if (hasStaticBuild && !process.env.VERCEL) {
   app.get(/^(?!\/api\/).*/, (req, res) => {
     res.sendFile(path.join(STATIC_DIR, "index.html"));
   });
 }
-
 const PORT = process.env.PORT ? Number(process.env.PORT) : 5000;
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`[起動確認] Flight Tracer server listening on port ${PORT}`);
   console.log(`[起動確認] static build: ${hasStaticBuild ? STATIC_DIR : "見つかりません(APIのみ)"}`);
 });
+
+// vercel 向け
+export default app;
