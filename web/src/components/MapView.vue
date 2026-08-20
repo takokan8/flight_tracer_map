@@ -502,6 +502,16 @@ defineExpose({
   font-size: 11px;
   margin-top: 6px;
 }
+/* 登録番号行(3番目のp)のみ黒背景・白文字にして視認性を上げる。
+   HTML側の行順(航空会社→機種→登録番号)が変わると対象がずれるので、
+   行順を変更する場合はこのnth-of-type(3)も合わせて見直すこと */
+.flight-popup p:nth-of-type(3) {
+    background: #000;
+    color: #fff;
+    padding: 2px 8px;
+    border-radius: 3px;
+    display: inline-block;
+}
 .flight-icon {
   filter: drop-shadow(1px 1px 2px rgba(0, 0, 0, 0.3));
 }
