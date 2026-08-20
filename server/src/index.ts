@@ -271,4 +271,5 @@ app.listen(PORT, "0.0.0.0", () => {
 });
 
 // vercel 向け
-export default app;
+//export default app;
+export = app;
