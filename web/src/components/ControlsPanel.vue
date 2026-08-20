@@ -1,63 +1,70 @@
 <template>
-  <div id="controls">
-    <select v-model="regionKey" @change="onRegionChange">
-      <option v-for="(label, key) in regionLabels" :key="key" :value="key">{{ label }}</option>
-    </select>
+  <div id="controls" :class="{ collapsed: !isPanelOpen }">
+    <div class="panel-header" @click="togglePanel">
+      <span class="panel-title">🛩️ コントロール</span>
+      <span class="panel-toggle">{{ isPanelOpen ? "▲" : "▼" }}</span>
+    </div>
 
-    <input
-      type="text"
-      v-model="searchQuery"
-      placeholder="コールサイン・航空会社・機種で検索"
-      @input="emit('update:searchQuery', searchQuery)"
-    />
+    <div class="panel-body" v-show="isPanelOpen">
+      <select v-model="regionKey" @change="onRegionChange">
+        <option v-for="(label, key) in regionLabels" :key="key" :value="key">{{ label }}</option>
+      </select>
 
-    <div class="watch-input-row">
       <input
         type="text"
-        v-model="registrationQuery"
-        placeholder="登録番号で検索 (例: N221EG)"
-        @keydown.enter="submitRegistrationSearch"
+        v-model="searchQuery"
+        placeholder="コールサイン・航空会社・機種で検索"
+        @input="emit('update:searchQuery', searchQuery)"
       />
-      <button @click="submitRegistrationSearch">🔍</button>
-    </div>
 
-    <div class="watch-input-row">
-      <input
-        type="text"
-        v-model="watchInput"
-        placeholder="コールサイン/登録番号を監視"
-        @keydown.enter="submitAddWatch"
-      />
-      <button @click="submitAddWatch">＋</button>
-    </div>
+      <div class="watch-input-row">
+        <input
+          type="text"
+          v-model="registrationQuery"
+          placeholder="登録番号で検索 (例: N221EG)"
+          @keydown.enter="submitRegistrationSearch"
+        />
+        <button @click="submitRegistrationSearch">🔍</button>
+      </div>
 
-    <div id="watchlist-container">
-      <span
-        v-for="v in pagedWatchList"
-        :key="v"
-        class="watch-tag"
-        :class="{ active: watchStatus[v] }"
-      >
-        {{ watchStatus[v] ? "🟢" : "⚪" }} {{ v }}
-        <button title="監視解除" @click="emit('remove-watch', v)">✕</button>
-      </span>
-    </div>
-    <div id="watchlist-pagination" class="watchlist-pagination">
-      <template v-if="watchList.length === 0"></template>
-      <span v-else-if="watchList.length <= WATCH_PAGE_SIZE">{{ watchList.length }}/{{ WATCH_LIST_MAX }}件</span>
-      <template v-else>
-        <button @click="prevPage" :disabled="watchListPage === 0">◀</button>
-        <span>{{ watchListPage + 1 }} / {{ totalPages }}ページ ({{ watchList.length }}/{{ WATCH_LIST_MAX }}件)</span>
-        <button @click="nextPage" :disabled="watchListPage >= totalPages - 1">▶</button>
-      </template>
-    </div>
+      <div class="watch-input-row">
+        <input
+          type="text"
+          v-model="watchInput"
+          placeholder="コールサイン/登録番号を監視"
+          @keydown.enter="submitAddWatch"
+        />
+        <button @click="submitAddWatch">＋</button>
+      </div>
 
-    <button @click="emit('refresh')">🔄 更新</button>
-    <div class="info">
-      {{ searchQuery ? `表示: ${filteredCount} / 全${totalCount}件` : `フライト数: ${totalCount}` }}
+      <div id="watchlist-container">
+        <span
+          v-for="v in pagedWatchList"
+          :key="v"
+          class="watch-tag"
+          :class="{ active: watchStatus[v] }"
+        >
+          {{ watchStatus[v] ? "🟢" : "⚪" }} {{ v }}
+          <button title="監視解除" @click="emit('remove-watch', v)">✕</button>
+        </span>
+      </div>
+      <div id="watchlist-pagination" class="watchlist-pagination">
+        <template v-if="watchList.length === 0"></template>
+        <span v-else-if="watchList.length <= WATCH_PAGE_SIZE">{{ watchList.length }}/{{ WATCH_LIST_MAX }}件</span>
+        <template v-else>
+          <button @click="prevPage" :disabled="watchListPage === 0">◀</button>
+          <span>{{ watchListPage + 1 }} / {{ totalPages }}ページ ({{ watchList.length }}/{{ WATCH_LIST_MAX }}件)</span>
+          <button @click="nextPage" :disabled="watchListPage >= totalPages - 1">▶</button>
+        </template>
+      </div>
+
+      <button @click="emit('refresh')">🔄 更新</button>
+      <div class="info">
+        {{ searchQuery ? `表示: ${filteredCount} / 全${totalCount}件` : `フライト数: ${totalCount}` }}
+      </div>
+      <div class="info">{{ lastUpdate ? `最終更新: ${lastUpdate}` : "最終更新: -" }}</div>
+      <div class="error" :class="{ visible: !!errorMsg }">{{ errorMsg }}</div>
     </div>
-    <div class="info">{{ lastUpdate ? `最終更新: ${lastUpdate}` : "最終更新: -" }}</div>
-    <div class="error" :class="{ visible: !!errorMsg }">{{ errorMsg }}</div>
   </div>
 </template>
 
@@ -89,6 +96,15 @@ const regionKey = ref("japan");
 const searchQuery = ref("");
 const registrationQuery = ref("");
 const watchInput = ref("");
+
+// パネルの開閉状態(次回訪問時も好みの状態を復元する)
+const PANEL_STATE_KEY = "controlsPanelOpen";
+const isPanelOpen = ref(localStorage.getItem(PANEL_STATE_KEY) !== "false");
+
+function togglePanel() {
+  isPanelOpen.value = !isPanelOpen.value;
+  localStorage.setItem(PANEL_STATE_KEY, String(isPanelOpen.value));
+}
 
 // Python/Flask版(flight_tracer/index.html)のrenderWatchList()と同じ
 // ページング仕様: 5件/ページで縦積み表示、上限250件
@@ -145,13 +161,33 @@ function submitAddWatch() {
   top: 10px;
   right: 10px;
   z-index: 1000;
-  background: white;
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
   padding: 12px;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   min-width: 260px;
   max-width: 300px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  font-weight: bold;
+  font-size: 14px;
+  color: #1a1a1a;
+  margin-bottom: 10px;
+}
+#controls.collapsed .panel-header {
+  margin-bottom: 0;
+}
+.panel-toggle {
+  font-size: 11px;
+  color: #666;
 }
 #controls select,
 #controls input[type="text"] {
