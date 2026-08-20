@@ -29,7 +29,7 @@ const emit = defineEmits<{ (e: "need-refresh"): void }>();
 const mapContainer = ref<HTMLDivElement | null>(null);
 let map: L.Map;
 const flightMarkers: Record<string, TrackedMarker> = {};
-const trailPolylines: Record<string, L.Polyline> = {};
+const trailPolylines: Record<string, L.Polyline[]> = {}; // 高度ごとにセグメント分割するため配列
 let activeRegionBounds: Bounds | null = null; // リージョン選択中はこちらを優先
 let moveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -258,7 +258,7 @@ async function loadAircraftPhoto(registration: string, marker: TrackedMarker) {
 
 function removeTrail(flightId: string) {
   if (trailPolylines[flightId]) {
-    map.removeLayer(trailPolylines[flightId]);
+    trailPolylines[flightId].forEach((seg) => map.removeLayer(seg));
     delete trailPolylines[flightId];
   }
 }
@@ -298,23 +298,42 @@ function syncWatchTooltip(marker: TrackedMarker, flight: FlightBasic) {
   marker.setIcon(createPlaneIcon(flight.heading || 0, flight.altitude));
 }
 
+// Leafletのpolylineは1本につき単色しか持てないため、高度に応じたグラデーション
+// を表現するには2点ごとの短いセグメントに分割し、セグメントごとに
+// altitudeToColor()の色を設定する(アイコンの高度配色と表現を揃えるため)。
+// セグメント色は両端点の高度の平均値で決定(片方欠損時はもう片方の高度を採用)
 function drawTrail(flightId: string, trailPoints: TrailPoint[] | undefined) {
   removeTrail(flightId);
   if (!trailPoints || trailPoints.length < 2) return;
 
-  const latlngs = trailPoints
-    .filter((p): p is TrailPoint & { lat: number; lng: number } => p.lat != null && p.lng != null)
-    .map((p) => [p.lat, p.lng] as [number, number]);
-  if (latlngs.length < 2) return;
+  const points = trailPoints.filter(
+    (p): p is TrailPoint & { lat: number; lng: number } => p.lat != null && p.lng != null,
+  );
+  if (points.length < 2) return;
 
-  const polyline = L.polyline(latlngs, {
-    color: "#1a73e8",
-    weight: 3,
-    opacity: 0.7,
-    dashArray: "6, 6",
-  }).addTo(map);
+  const segments: L.Polyline[] = [];
+  for (let i = 0; i < points.length - 1; i++) {
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const alt1 = p1.alt;
+    const alt2 = p2.alt;
+    const segAlt = alt1 != null && alt2 != null ? (alt1 + alt2) / 2 : (alt1 != null ? alt1 : alt2);
 
-  trailPolylines[flightId] = polyline;
+    const segment = L.polyline(
+      [
+        [p1.lat, p1.lng],
+        [p2.lat, p2.lng],
+      ],
+      {
+        color: altitudeToColor(segAlt),
+        weight: 3,
+        opacity: 0.5,
+      },
+    ).addTo(map);
+    segments.push(segment);
+  }
+
+  trailPolylines[flightId] = segments;
 }
 
 async function loadFlightDetails(flightId: string, marker: TrackedMarker) {
