@@ -1,0 +1,1 @@
+{"root":["./src/App.vue","./src/env.d.ts","./src/main.ts","./src/components/ControlsPanel.vue","./src/components/Magnifier.vue","./src/components/MapView.vue","./src/composables/useFlightApi.ts","./src/composables/useWatchlist.ts","./src/constants/regions.ts","./src/types/flight.ts"],"version":"5.9.3"}
