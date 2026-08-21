@@ -47,10 +47,11 @@ declare module "flightradarapi" {
 
   export class FlightRadar24API {
     constructor();
-    getBounds(box: { tl_y: number; tl_x: number; br_y: number; br_x: number }): Bounds;
+    getBounds(box: { tl_y: number; tl_x: number; br_y: number; br_x: number }): string;
+    getBoundsByPoint(latitude: number, longitude: number, radius: number): string;
     getFlights(
       airline?: string | null,
-      bounds?: Bounds | null,
+      bounds?: string | null,
       registration?: string | null
     ): Promise<Flight[]>;
     getFlightDetails(flight: Flight): Promise<FlightRawDetails>;

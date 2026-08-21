@@ -6,8 +6,11 @@
 import { onMounted, onBeforeUnmount, ref, watch } from "vue";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import type { Bounds, FlightBasic, FlightDetailed, TrailPoint, PhotoState } from "../types/flight";
+import type { Bounds, FlightBasic, FlightDetailed, TrailPoint, PhotoState, WatchTrackEntry } from "../types/flight";
 import { useFlightApi } from "../composables/useFlightApi";
+
+/** ウォッチリスト消失検知(系統2)のピン表示用データ(App.vue側で登録番号を合成して渡す) */
+type LostAircraftPin = WatchTrackEntry & { registration: string };
 
 /** マーカーに乗せる可変状態。Leafletのポップアップは生HTMLなのでVueのreactivityは使わず、
  * このオブジェクト自体を書き換えては都度 renderPopup() で描き直す方式にする */
@@ -23,6 +26,7 @@ const props = defineProps<{
   flights: FlightBasic[];
   watchList: string[];
   spotlightCode?: string | null;
+  lostAircraft?: LostAircraftPin[];
 }>();
 const emit = defineEmits<{ (e: "need-refresh"): void }>();
 
@@ -30,6 +34,7 @@ const mapContainer = ref<HTMLDivElement | null>(null);
 let map: L.Map;
 const flightMarkers: Record<string, TrackedMarker> = {};
 const trailPolylines: Record<string, L.Polyline[]> = {}; // 高度ごとにセグメント分割するため配列
+const lostMarkers: Record<string, L.Marker> = {}; // ウォッチリスト消失検知(系統2)専用の別レイヤー
 let activeRegionBounds: Bounds | null = null; // リージョン選択中はこちらを優先
 let moveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -419,6 +424,84 @@ watch(
   { deep: true }
 );
 
+// === ウォッチリスト消失検知(系統2)の最終位置ピン ===
+// 通常の飛行中マーカー(flightMarkers)とは別レイヤーで管理する
+
+function formatDateTime(ms: number | null): string {
+  if (ms === null) return "不明";
+  return new Date(ms).toLocaleString();
+}
+
+function createLostPinIcon(index: number): L.DivIcon {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 40" width="32" height="40">
+      <path fill="#d32f2f" stroke="#fff" stroke-width="1.5"
+        d="M16 0C7.2 0 0 7.2 0 16c0 11 16 24 16 24s16-13 16-24C32 7.2 24.8 0 16 0z"/>
+      <circle cx="16" cy="16" r="10" fill="#fff"/>
+      <text x="16" y="21" text-anchor="middle" font-size="12" font-weight="bold" fill="#d32f2f">${index}</text>
+    </svg>`;
+  return L.divIcon({
+    html: svg,
+    className: "lost-aircraft-icon",
+    iconSize: [32, 40],
+    iconAnchor: [16, 40],
+    popupAnchor: [0, -36],
+  });
+}
+
+function buildLostPopupContent(pin: LostAircraftPin): string {
+  const s = pin.snapshot;
+  return `
+    <div class="flight-popup lost-popup">
+        <h3>📡 消失中 (No.${pin.index})</h3>
+        <p><strong>コールサイン:</strong> ${s?.callsign || "Unknown"}</p>
+        <p><strong>航空会社:</strong> ${s?.airline || "Unknown"}</p>
+        <p><strong>機種:</strong> ${s?.aircraft || "Unknown"}</p>
+        <p><strong>登録番号:</strong> <span class="registration-badge">${s?.registration || pin.registration}</span></p>
+        <div class="route">${s?.origin || "N/A"} → ${s?.destination || "N/A"}</div>
+        <p><strong>最終高度:</strong> ${s?.altitude ? s.altitude + " ft" : "N/A"}</p>
+        <p><strong>最終速度:</strong> ${s?.speed ? s.speed + " kts" : "N/A"}</p>
+        <p><strong>最終方位:</strong> ${s?.heading ?? 0}°</p>
+        <p><strong>最終確認日時:</strong> ${formatDateTime(pin.lastSeenAt)}</p>
+        <p><strong>最終位置:</strong> ${pin.lastLat?.toFixed(4)}, ${pin.lastLng?.toFixed(4)}</p>
+    </div>
+  `;
+}
+
+function renderLostMarkers(pins: LostAircraftPin[]) {
+  const currentRegs = new Set(pins.map((p) => p.registration));
+
+  // 対象から外れた(消失解除・監視解除された)ピンを削除
+  Object.keys(lostMarkers).forEach((reg) => {
+    if (!currentRegs.has(reg)) {
+      map.removeLayer(lostMarkers[reg]);
+      delete lostMarkers[reg];
+    }
+  });
+
+  pins.forEach((pin) => {
+    if (pin.lastLat === null || pin.lastLng === null) return;
+    const pos: [number, number] = [pin.lastLat, pin.lastLng];
+    let marker = lostMarkers[pin.registration];
+    if (!marker) {
+      marker = L.marker(pos, { icon: createLostPinIcon(pin.index) }).addTo(map);
+      marker.bindPopup(buildLostPopupContent(pin), { maxWidth: 280 });
+      lostMarkers[pin.registration] = marker;
+    } else {
+      marker.setLatLng(pos);
+      marker.setIcon(createLostPinIcon(pin.index));
+      marker.setPopupContent(buildLostPopupContent(pin));
+    }
+  });
+}
+
+watch(
+  () => props.lostAircraft,
+  (pins) => {
+    if (map) renderLostMarkers(pins || []);
+  },
+  { deep: true }
+);
+
 function onMapMoveEnd() {
   activeRegionBounds = null; // 手動操作でリージョン固定を解除
   if (moveDebounceTimer) clearTimeout(moveDebounceTimer);
@@ -434,6 +517,8 @@ onMounted(() => {
 
   map.on("moveend", onMapMoveEnd);
   map.on("zoomend", onMapMoveEnd);
+
+  renderLostMarkers(props.lostAircraft || []); // ページ読み込み時点で既に消失中のデータがあれば表示
 
   emit("need-refresh");
 });
@@ -514,6 +599,12 @@ defineExpose({
 }
 .flight-icon {
   filter: drop-shadow(1px 1px 2px rgba(0, 0, 0, 0.3));
+}
+.lost-aircraft-icon {
+  filter: drop-shadow(1px 1px 3px rgba(0, 0, 0, 0.5));
+}
+.lost-popup h3 {
+  color: #d32f2f;
 }
 .flight-watch-tooltip {
   background: #111 !important;

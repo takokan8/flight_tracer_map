@@ -3,8 +3,9 @@ import type { FlightBasic } from "../types/flight";
 
 const STORAGE_KEY = "flightWatchList";
 
-// Python/Flask版(flight_tracer/index.html)と同じ仕様
-export const WATCH_LIST_MAX = 250;
+// 消失検知(系統2)を個別ポーリングする都合上、Cloudflare bot対策への配慮として
+// Python版の250件から20件に縮小(合意仕様)
+export const WATCH_LIST_MAX = 20;
 export const WATCH_PAGE_SIZE = 5;
 
 function loadWatchList(): string[] {

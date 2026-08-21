@@ -33,8 +33,18 @@ export function useFlightApi() {
     return response.json();
   }
 
-  async function searchByRegistration(registration: string): Promise<FlightBasic> {
-    const response = await fetch(`${API_BASE}/search?registration=${encodeURIComponent(registration)}`);
+  async function searchByRegistration(
+    registration: string,
+    area?: { lat: number; lng: number; radiusKm: number } | null
+  ): Promise<FlightBasic | null> {
+    const params = new URLSearchParams({ registration });
+    if (area) {
+      params.set("lat", String(area.lat));
+      params.set("lng", String(area.lng));
+      params.set("radius", String(area.radiusKm));
+    }
+    const response = await fetch(`${API_BASE}/search?${params.toString()}`);
+    if (response.status === 404) return null; // 見つからなかった(消失/未発見)は例外にせずnullで返す
     if (!response.ok) return parseErrorResponse(response);
     return response.json();
   }

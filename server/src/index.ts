@@ -175,9 +175,21 @@ app.get(
       return;
     }
 
-    // registration検索はboundsを指定しない(= 全世界対象)。bounds限定検索より高速。
-    // ただしユーザーの明示的な検索操作時のみ呼ぶこと。ポーリングには絶対に組み込まない。
-    const flights = await frApi.getFlights(null, null, registration);
+    // lat/lng/radius(km)が揃っている場合のみエリア限定検索にする。
+    // ウォッチリスト消失検知(系統2)のバックオフ再捜索専用パラメータ:
+    // ステップ0〜3では直近位置を中心に50km→100km→200km→400kmと範囲を広げ、
+    // ステップ4以降は全世界検索(パラメータ省略)にフォールバックする合意仕様。
+    // 通常監視(5分間隔の存在確認)はこれらを付けず、常に全世界検索のまま。
+    const lat = req.query.lat !== undefined ? parseFloat(String(req.query.lat)) : null;
+    const lng = req.query.lng !== undefined ? parseFloat(String(req.query.lng)) : null;
+    const radiusKm = req.query.radius !== undefined ? parseFloat(String(req.query.radius)) : null;
+
+    let boundsParam: string | null = null;
+    if (lat !== null && lng !== null && radiusKm !== null && !Number.isNaN(lat) && !Number.isNaN(lng) && !Number.isNaN(radiusKm) && radiusKm > 0) {
+      boundsParam = frApi.getBoundsByPoint(lat, lng, radiusKm * 1000);
+    }
+
+    const flights = await frApi.getFlights(null, boundsParam, registration);
 
     if (!flights || flights.length === 0) {
       res.status(404).json({

@@ -42,10 +42,20 @@
           v-for="v in pagedWatchList"
           :key="v"
           class="watch-tag"
-          :class="{ active: watchStatus[v] }"
+          :class="{ active: watchStatus[v], lost: watchTracking[v]?.status === 'lost' }"
         >
-          {{ watchStatus[v] ? "🟢" : "⚪" }} {{ v }}
-          <button title="監視解除" @click="emit('remove-watch', v)">✕</button>
+          {{ statusIcon(v) }}
+          <button
+            class="watch-tag-reg"
+            type="button"
+            :disabled="!hasPosition(v)"
+            :title="hasPosition(v) ? '地図をこの位置へ移動' : '位置情報なし'"
+            @click="focusOnPosition(v)"
+          >
+            {{ v }}
+          </button>
+          <span v-if="hasPosition(v)" class="watch-tag-coords">{{ formatCoords(v) }}</span>
+          <button class="watch-tag-remove" title="監視解除" @click="emit('remove-watch', v)">✕</button>
         </span>
       </div>
       <div id="watchlist-pagination" class="watchlist-pagination">
@@ -72,6 +82,7 @@
 import { computed, ref, watch } from "vue";
 import { REGION_LABELS } from "../constants/regions";
 import { WATCH_LIST_MAX, WATCH_PAGE_SIZE } from "../composables/useWatchlist";
+import type { WatchTrackEntry } from "../types/flight";
 
 const props = defineProps<{
   totalCount: number;
@@ -80,6 +91,7 @@ const props = defineProps<{
   errorMsg: string;
   watchList: string[];
   watchStatus: Record<string, boolean>;
+  watchTracking: Record<string, WatchTrackEntry>;
 }>();
 
 const emit = defineEmits<{
@@ -88,6 +100,7 @@ const emit = defineEmits<{
   (e: "registration-search", value: string): void;
   (e: "add-watch", value: string): void;
   (e: "remove-watch", value: string): void;
+  (e: "focus-position", lat: number, lng: number): void;
   (e: "refresh"): void;
 }>();
 
@@ -104,6 +117,30 @@ const isPanelOpen = ref(localStorage.getItem(PANEL_STATE_KEY) !== "false");
 function togglePanel() {
   isPanelOpen.value = !isPanelOpen.value;
   localStorage.setItem(PANEL_STATE_KEY, String(isPanelOpen.value));
+}
+
+// ウォッチリスト消失検知(系統2)の追跡状態を使った表示ヘルパー
+function hasPosition(reg: string): boolean {
+  const entry = props.watchTracking[reg];
+  return !!entry && entry.lastLat !== null && entry.lastLng !== null;
+}
+
+function formatCoords(reg: string): string {
+  const entry = props.watchTracking[reg];
+  if (!entry || entry.lastLat === null || entry.lastLng === null) return "";
+  return `${entry.lastLat.toFixed(4)}, ${entry.lastLng.toFixed(4)}`;
+}
+
+function statusIcon(reg: string): string {
+  const entry = props.watchTracking[reg];
+  if (entry?.status === "lost") return "📡"; // 消失中(バックオフ再捜索中)
+  return props.watchStatus[reg] ? "🟢" : "⚪";
+}
+
+function focusOnPosition(reg: string) {
+  const entry = props.watchTracking[reg];
+  if (!entry || entry.lastLat === null || entry.lastLng === null) return;
+  emit("focus-position", entry.lastLat, entry.lastLng);
 }
 
 // Python/Flask版(flight_tracer/index.html)のrenderWatchList()と同じ
@@ -275,7 +312,8 @@ function submitAddWatch() {
 .watch-tag {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
+  flex-wrap: wrap;
   gap: 4px;
   background: #e8f0fe;
   color: #1a73e8;
@@ -289,6 +327,12 @@ function submitAddWatch() {
   color: #155724;
   font-weight: bold;
   box-shadow: 0 0 4px rgba(21, 87, 36, 0.4);
+}
+.watch-tag.lost {
+  background: #fdecea;
+  color: #d32f2f;
+  font-weight: bold;
+  box-shadow: 0 0 4px rgba(211, 47, 47, 0.4);
 }
 .watch-tag button {
   all: unset;
@@ -304,5 +348,25 @@ function submitAddWatch() {
 }
 .watch-tag button:hover {
   opacity: 1;
+}
+.watch-tag-reg {
+  font-weight: bold;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  opacity: 1 !important;
+  margin-left: 0 !important;
+}
+.watch-tag-reg:disabled {
+  cursor: default;
+  text-decoration: none;
+  opacity: 0.8 !important;
+}
+.watch-tag-coords {
+  font-size: 10px;
+  opacity: 0.75;
+  font-family: "Courier New", monospace;
+}
+.watch-tag-remove {
+  margin-left: auto !important;
 }
 </style>
