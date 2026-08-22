@@ -82,6 +82,7 @@
 import { computed, ref, watch } from "vue";
 import { REGION_LABELS } from "../constants/regions";
 import { WATCH_LIST_MAX, WATCH_PAGE_SIZE } from "../composables/useWatchlist";
+import { BACKOFF_STEPS } from "../composables/useWatchlistMonitor";
 import type { WatchTrackEntry } from "../types/flight";
 
 const props = defineProps<{
@@ -100,7 +101,7 @@ const emit = defineEmits<{
   (e: "registration-search", value: string): void;
   (e: "add-watch", value: string): void;
   (e: "remove-watch", value: string): void;
-  (e: "focus-position", lat: number, lng: number): void;
+  (e: "focus-position", lat: number, lng: number, marginKm: number): void;
   (e: "refresh"): void;
 }>();
 
@@ -137,10 +138,24 @@ function statusIcon(reg: string): string {
   return props.watchStatus[reg] ? "🟢" : "⚪";
 }
 
+// 位置データの鮮度に応じたジャンプ先の表示マージン(km)を決める:
+// - 通常監視中: 次回ポーリングまで最大5分弱古い可能性があるため、
+//   旅客機の巡航速度(5分でおよそ80km)を踏まえて余裕を持った値にする
+// - 消失中: そのバックオフ段階で実際に検索している半径をそのまま使う
+//   (探索中の範囲=機体がいる可能性のある範囲、という意味で理にかなっている)
+const NORMAL_MARGIN_KM = 100;
+const LOST_FALLBACK_MARGIN_KM = 500; // 全世界検索段階(ステップ4以降)の目安表示範囲
+
+function marginForEntry(entry: WatchTrackEntry): number {
+  if (entry.status !== "lost") return NORMAL_MARGIN_KM;
+  const step = BACKOFF_STEPS[Math.min(entry.backoffStep, BACKOFF_STEPS.length - 1)];
+  return step.radiusKm ?? LOST_FALLBACK_MARGIN_KM;
+}
+
 function focusOnPosition(reg: string) {
   const entry = props.watchTracking[reg];
   if (!entry || entry.lastLat === null || entry.lastLng === null) return;
-  emit("focus-position", entry.lastLat, entry.lastLng);
+  emit("focus-position", entry.lastLat, entry.lastLng, marginForEntry(entry));
 }
 
 // Python/Flask版(flight_tracer/index.html)のrenderWatchList()と同じ

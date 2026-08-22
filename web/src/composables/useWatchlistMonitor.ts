@@ -8,7 +8,7 @@ const INDEX_COUNTER_KEY = "flightWatchTrackingIndexCounter";
 // 合意仕様: 時間・空間の二軸エクスポネンシャルバックオフ
 // ステップ0(即座)〜3は直近位置を中心にした半径検索、ステップ4で全世界検索に切り替え。
 // ステップ5以降(このテーブルの範囲外)は通常監視と同じ5分間隔・全世界検索に合流する。
-const BACKOFF_STEPS: { delayMs: number; radiusKm: number | null }[] = [
+export const BACKOFF_STEPS: { delayMs: number; radiusKm: number | null }[] = [
   { delayMs: 0, radiusKm: 50 }, // step0: 即座, 50km
   { delayMs: 30_000, radiusKm: 100 }, // step1: 30秒後, 100km
   { delayMs: 60_000, radiusKm: 200 }, // step2: 1分後, 200km

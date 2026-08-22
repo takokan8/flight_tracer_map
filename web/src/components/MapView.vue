@@ -538,6 +538,14 @@ defineExpose({
   flyTo(lat: number, lng: number, zoom = 8) {
     map.setView([lat, lng], zoom);
   },
+  // ウォッチリストの最終確認位置へのジャンプ用。位置データが古い(通常監視は
+  // 最大5分弱、消失中はバックオフ段階に応じてさらに古い)ため、固定ズームだと
+  // 実際の現在位置が画面外にはみ出す恐れがある。半径マージンを取ったboundsで
+  // fitさせることで、機体が動いていても収まりやすくする
+  flyToWithMargin(lat: number, lng: number, marginKm: number) {
+    const bounds = L.latLng(lat, lng).toBounds(marginKm * 2 * 1000); // toBoundsは一辺の長さ(m)指定
+    map.flyToBounds(bounds, { maxZoom: 11 });
+  },
 });
 </script>
 

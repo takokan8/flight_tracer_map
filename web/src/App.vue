@@ -116,9 +116,10 @@ async function onRegistrationSearch(registration: string) {
   }
 }
 
-// ウォッチリストパネルの登録番号ボタンクリック: その最終確認位置へ地図を移動
-function onFocusPosition(lat: number, lng: number) {
-  mapRef.value?.flyTo(lat, lng, 12);
+// ウォッチリストパネルの登録番号ボタンクリック: その最終確認位置へ地図を移動。
+// 位置データの鮮度に応じたマージン(km)を加味してfitさせる(ControlsPanel側で算出)
+function onFocusPosition(lat: number, lng: number, marginKm: number) {
+  mapRef.value?.flyToWithMargin(lat, lng, marginKm);
 }
 
 onMounted(() => {
