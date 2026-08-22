@@ -197,12 +197,22 @@ export function useWatchlistMonitor(watchList: Ref<string[]>) {
     lostTicker = null;
   }
 
-  // ウォッチリストからの削除に追従して追跡データも削除する
+  // ウォッチリストの増減に追従する:
+  // - 削除された機体は追跡データごと削除
+  // - 追加された機体は5分周期のキューを待たず、即座に1回だけ単独で照会して
+  //   位置情報を早期に埋める(通常監視キューとは独立、単発リクエストなので
+  //   Cloudflare負荷への影響は軽微)
   watch(
     () => watchList.value.slice(),
     (newList, oldList) => {
-      const removed = (oldList || []).filter((r) => !newList.includes(r));
+      const prev = oldList || [];
+      const removed = prev.filter((r) => !newList.includes(r));
       removed.forEach(removeEntry);
+
+      const added = newList.filter((r) => !prev.includes(r));
+      added.forEach((reg) => {
+        pollOnce(reg, null).catch((e) => console.warn(`[watchlist監視] ${reg} の初回即時照会に失敗:`, e));
+      });
     }
   );
 
