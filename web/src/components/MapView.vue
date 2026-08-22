@@ -481,15 +481,23 @@ function renderLostMarkers(pins: LostAircraftPin[]) {
   pins.forEach((pin) => {
     if (pin.lastLat === null || pin.lastLng === null) return;
     const pos: [number, number] = [pin.lastLat, pin.lastLng];
+    const tooltipLabel = `📡 ${pin.registration} (No.${pin.index})`;
     let marker = lostMarkers[pin.registration];
     if (!marker) {
       marker = L.marker(pos, { icon: createLostPinIcon(pin.index) }).addTo(map);
       marker.bindPopup(buildLostPopupContent(pin), { maxWidth: 280 });
+      marker.bindTooltip(tooltipLabel, {
+        permanent: true,
+        direction: "top",
+        offset: [0, -36],
+        className: "flight-watch-tooltip",
+      });
       lostMarkers[pin.registration] = marker;
     } else {
       marker.setLatLng(pos);
       marker.setIcon(createLostPinIcon(pin.index));
       marker.setPopupContent(buildLostPopupContent(pin));
+      marker.setTooltipContent(tooltipLabel);
     }
   });
 }
