@@ -8,6 +8,7 @@
         :spotlight-code="spotlightCode"
         :lost-aircraft="lostAircraftList"
         @need-refresh="fetchFlights"
+        @add-watch="addToWatchlist"
       />
       <ControlsPanel
         :total-count="allFlights.length"

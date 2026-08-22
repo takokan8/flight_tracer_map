@@ -28,7 +28,7 @@ const props = defineProps<{
   spotlightCode?: string | null;
   lostAircraft?: LostAircraftPin[];
 }>();
-const emit = defineEmits<{ (e: "need-refresh"): void }>();
+const emit = defineEmits<{ (e: "need-refresh"): void; (e: "add-watch", value: string): void }>();
 
 const mapContainer = ref<HTMLDivElement | null>(null);
 let map: L.Map;
@@ -182,12 +182,23 @@ function buildPopupContent(
     `
       : "";
 
+  const watchTarget = (flight.registration || flight.callsign || "").toUpperCase();
+  const alreadyWatched = !!watchTarget && props.watchList.includes(watchTarget);
+  const watchBtn = watchTarget
+    ? `<button class="popup-watch-btn" data-watch-target="${watchTarget}" ${alreadyWatched ? "disabled" : ""}>${
+        alreadyWatched ? "✓ 監視中" : "☆ 監視に追加"
+      }</button>`
+    : "";
+
   return `
     <div class="flight-popup">
         <h3>✈️ ${flight.callsign || "Unknown"}</h3>
         <p><strong>航空会社:</strong> ${flight.airline || "Unknown"}</p>
         <p><strong>機種:</strong> ${flight.aircraft || "Unknown"}</p>
-        <p><strong>登録番号:</strong> <span class="registration-badge">${flight.registration || "N/A"}</span></p>
+        <p class="registration-row">
+            <span><strong>登録番号:</strong> <span class="registration-badge">${flight.registration || "N/A"}</span></span>
+            ${watchBtn}
+        </p>
         <div class="route">${flight.origin || "N/A"} → ${flight.destination || "N/A"}</div>
         <p><strong>高度:</strong> ${flight.altitude ? flight.altitude + " ft" : "N/A"}</p>
         <p><strong>速度:</strong> ${flight.speed ? flight.speed + " kts" : "N/A"}</p>
@@ -206,12 +217,23 @@ function renderPopup(marker: TrackedMarker) {
     buildPopupContent(marker._currentFlight, marker._detailLoading, marker._photoState, marker._photoDismissed)
   );
   const el = marker.getPopup()?.getElement();
+
   const closeBtn = el?.querySelector<HTMLButtonElement>(".photo-close-btn");
   closeBtn?.addEventListener("click", () => {
     marker._photoDismissed = true;
     // 重要: このクリックハンドラ内で同期的にsetPopupContent()を呼ぶと、Leafletが
     // 「ポップアップ内のクリックか」を判定する処理より先にDOMが差し替わってしまい、
     // 判定に失敗してポップアップごと閉じてしまう。1tick遅らせて回避する。
+    setTimeout(() => renderPopup(marker), 0);
+  });
+
+  const watchBtn = el?.querySelector<HTMLButtonElement>(".popup-watch-btn");
+  watchBtn?.addEventListener("click", () => {
+    const target = watchBtn.dataset.watchTarget;
+    if (!target) return;
+    emit("add-watch", target);
+    // 追加直後にボタンの見た目(監視中表示)を反映する。上のphoto-close-btnと同じ理由で
+    // クリックハンドラ内での同期的なsetPopupContent呼び出しを避け、1tick遅らせる
     setTimeout(() => renderPopup(marker), 0);
   });
 }
@@ -419,6 +441,8 @@ watch(
   () => {
     Object.values(flightMarkers).forEach((marker) => {
       syncWatchTooltip(marker, marker._basicFlight);
+      // 開いているポップアップがあれば、監視ボタンの状態(監視中/未監視)も更新する
+      if (marker.isPopupOpen()) renderPopup(marker);
     });
   },
   { deep: true }
@@ -597,6 +621,30 @@ defineExpose({
   color: #333;
   margin: 8px 0;
   font-size: 14px;
+}
+.registration-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.popup-watch-btn {
+  background: #1a73e8;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: bold;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.popup-watch-btn:hover {
+  background: #1557b0;
+}
+.popup-watch-btn:disabled {
+  background: #9aa5b1;
+  cursor: default;
 }
 .flight-popup .loading-note {
   color: #999;
