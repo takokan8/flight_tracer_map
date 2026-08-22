@@ -49,11 +49,29 @@ export function useFlightApi() {
     return response.json();
   }
 
+  // registration(N/A)が取得できない機体の代替追跡用。全世界検索には対応せず、
+  // エリア限定(lat/lng/radius必須)のみサポートする
+  async function searchByIcao24bit(
+    icao24bit: string,
+    area: { lat: number; lng: number; radiusKm: number }
+  ): Promise<FlightBasic | null> {
+    const params = new URLSearchParams({
+      icao24bit,
+      lat: String(area.lat),
+      lng: String(area.lng),
+      radius: String(area.radiusKm),
+    });
+    const response = await fetch(`${API_BASE}/search-by-icao?${params.toString()}`);
+    if (response.status === 404) return null;
+    if (!response.ok) return parseErrorResponse(response);
+    return response.json();
+  }
+
   async function fetchAircraftPhoto(registration: string): Promise<PhotoResult> {
     const response = await fetch(`${API_BASE}/photo/${encodeURIComponent(registration)}`);
     if (!response.ok) return { found: false }; // 失敗時は「写真なし」扱い(表示を止めない)
     return response.json();
   }
 
-  return { fetchFlights, fetchFlightDetail, searchByRegistration, fetchAircraftPhoto };
+  return { fetchFlights, fetchFlightDetail, searchByRegistration, searchByIcao24bit, fetchAircraftPhoto };
 }

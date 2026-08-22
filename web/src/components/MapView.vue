@@ -27,8 +27,9 @@ const props = defineProps<{
   watchList: string[];
   spotlightCode?: string | null;
   lostAircraft?: LostAircraftPin[];
+  watchTracking?: Record<string, WatchTrackEntry>;
 }>();
-const emit = defineEmits<{ (e: "need-refresh"): void; (e: "add-watch", value: string): void }>();
+const emit = defineEmits<{ (e: "need-refresh"): void; (e: "add-watch-live", flight: FlightBasic): void }>();
 
 const mapContainer = ref<HTMLDivElement | null>(null);
 let map: L.Map;
@@ -182,13 +183,22 @@ function buildPopupContent(
     `
       : "";
 
-  const watchTarget = (flight.registration || flight.callsign || "").toUpperCase();
-  const alreadyWatched = !!watchTarget && props.watchList.includes(watchTarget);
-  const watchBtn = watchTarget
-    ? `<button class="popup-watch-btn" data-watch-target="${watchTarget}" ${alreadyWatched ? "disabled" : ""}>${
-        alreadyWatched ? "✓ 監視中" : "☆ 監視に追加"
-      }</button>`
+  // ウォッチリスト監視(系統2)はregistration方式(全世界検索対応)と
+  // icao24bit方式(エリア限定検索のみ、400km圏内で見つからなければ追跡不能)の
+  // どちらかで追跡する。registrationが不明な機体でもicao24bitさえ取得できれば
+  // 追跡対象にできる(ただし全世界検索はできない制約付き)
+  const hasRegistration = !!flight.registration;
+  const watchKey = hasRegistration ? flight.registration.toUpperCase() : (flight.icao24bit || "").toUpperCase();
+  const canTrack = !!watchKey;
+  const alreadyWatched = canTrack && props.watchList.includes(watchKey);
+  const watchBtnTitle = !canTrack
+    ? "登録番号・ICAOアドレスが不明なため監視できません"
+    : !hasRegistration
+    ? "登録番号未確定のためICAOアドレスで追跡します(近距離のみ・遠方に行くと追跡できなくなります)"
     : "";
+  const watchBtn = `<button class="popup-watch-btn" ${
+    canTrack && !alreadyWatched ? "" : "disabled"
+  } title="${watchBtnTitle}">${alreadyWatched ? "✓ 監視中" : "☆ 監視に追加"}</button>`;
 
   return `
     <div class="flight-popup">
@@ -229,9 +239,10 @@ function renderPopup(marker: TrackedMarker) {
 
   const watchBtn = el?.querySelector<HTMLButtonElement>(".popup-watch-btn");
   watchBtn?.addEventListener("click", () => {
-    const target = watchBtn.dataset.watchTarget;
-    if (!target) return;
-    emit("add-watch", target);
+    if (watchBtn.disabled) return;
+    const flight = marker._currentFlight;
+    if (!flight) return;
+    emit("add-watch-live", flight);
     // 追加直後にボタンの見た目(監視中表示)を反映する。上のphoto-close-btnと同じ理由で
     // クリックハンドラ内での同期的なsetPopupContent呼び出しを避け、1tick遅らせる
     setTimeout(() => renderPopup(marker), 0);
@@ -241,7 +252,7 @@ function renderPopup(marker: TrackedMarker) {
 async function loadAircraftPhoto(registration: string, marker: TrackedMarker) {
   const reg = (registration || "").trim().toUpperCase();
 
-  if (!reg || reg === "N/A") {
+  if (!reg) {
     marker._photoState = { status: "notfound" };
     renderPopup(marker);
     return;
@@ -298,8 +309,18 @@ function removeTrail(flightId: string) {
 function syncWatchTooltip(marker: TrackedMarker, flight: FlightBasic) {
   const callsign = (flight.callsign || "").toUpperCase();
   const registration = (flight.registration || "").toUpperCase();
+  const icao24bit = (flight.icao24bit || "").toLowerCase();
 
-  const watchMatch = props.watchList.find((w) => w === callsign || w === registration) || null;
+  // registration/callsignでの一致に加えて、icao24bit方式で追跡している
+  // エントリ(registration不明機体の代替追跡)もここで拾う。 見た目上は
+  // watchListの文字列(icao24bit hexそのもの)がラベルとして表示される
+  const icaoMatch = props.watchTracking
+    ? Object.entries(props.watchTracking).find(
+        ([, entry]) => entry.trackBy === "icao24bit" && entry.icao24bit === icao24bit
+      )?.[0] || null
+    : null;
+
+  const watchMatch = props.watchList.find((w) => w === callsign || w === registration) || icaoMatch;
   const spotlight = (props.spotlightCode || "").toUpperCase();
   const spotlightMatch = spotlight && (registration === spotlight || callsign === spotlight) ? props.spotlightCode : null;
 
@@ -437,7 +458,7 @@ watch(
 // ウォッチリストや検索ハイライトだけが変わったとき(新しいフライト取得を待たずに)
 // 既存マーカーのtooltip/アイコンを即座に反映する
 watch(
-  () => [props.watchList, props.spotlightCode],
+  () => [props.watchList, props.spotlightCode, props.watchTracking],
   () => {
     Object.values(flightMarkers).forEach((marker) => {
       syncWatchTooltip(marker, marker._basicFlight);
@@ -456,12 +477,13 @@ function formatDateTime(ms: number | null): string {
   return new Date(ms).toLocaleString();
 }
 
-function createLostPinIcon(index: number): L.DivIcon {
+function createLostPinIcon(index: number, untrackable: boolean): L.DivIcon {
+  const color = untrackable ? "#607d8b" : "#d32f2f"; // 追跡不能はグレー、消失中(捜索中)は赤
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 40" width="32" height="40">
-      <path fill="#d32f2f" stroke="#fff" stroke-width="1.5"
+      <path fill="${color}" stroke="#fff" stroke-width="1.5"
         d="M16 0C7.2 0 0 7.2 0 16c0 11 16 24 16 24s16-13 16-24C32 7.2 24.8 0 16 0z"/>
       <circle cx="16" cy="16" r="10" fill="#fff"/>
-      <text x="16" y="21" text-anchor="middle" font-size="12" font-weight="bold" fill="#d32f2f">${index}</text>
+      <text x="16" y="21" text-anchor="middle" font-size="12" font-weight="bold" fill="${color}">${index}</text>
     </svg>`;
   return L.divIcon({
     html: svg,
@@ -474,9 +496,14 @@ function createLostPinIcon(index: number): L.DivIcon {
 
 function buildLostPopupContent(pin: LostAircraftPin): string {
   const s = pin.snapshot;
+  const untrackable = pin.status === "untrackable";
+  const heading = untrackable ? `🛑 追跡不能 (No.${pin.index})` : `📡 消失中 (No.${pin.index})`;
+  const note = untrackable
+    ? `<p class="lost-popup-note">ICAOアドレスでの追跡でしたが、400km圏内で発見できず捜索を終了しました。最終確認位置を表示しています。</p>`
+    : "";
   return `
-    <div class="flight-popup lost-popup">
-        <h3>📡 消失中 (No.${pin.index})</h3>
+    <div class="flight-popup lost-popup${untrackable ? " untrackable" : ""}">
+        <h3>${heading}</h3>
         <p><strong>コールサイン:</strong> ${s?.callsign || "Unknown"}</p>
         <p><strong>航空会社:</strong> ${s?.airline || "Unknown"}</p>
         <p><strong>機種:</strong> ${s?.aircraft || "Unknown"}</p>
@@ -487,6 +514,7 @@ function buildLostPopupContent(pin: LostAircraftPin): string {
         <p><strong>最終方位:</strong> ${s?.heading ?? 0}°</p>
         <p><strong>最終確認日時:</strong> ${formatDateTime(pin.lastSeenAt)}</p>
         <p><strong>最終位置:</strong> ${pin.lastLat?.toFixed(4)}, ${pin.lastLng?.toFixed(4)}</p>
+        ${note}
     </div>
   `;
 }
@@ -505,10 +533,11 @@ function renderLostMarkers(pins: LostAircraftPin[]) {
   pins.forEach((pin) => {
     if (pin.lastLat === null || pin.lastLng === null) return;
     const pos: [number, number] = [pin.lastLat, pin.lastLng];
-    const tooltipLabel = `📡 ${pin.registration} (No.${pin.index})`;
+    const untrackable = pin.status === "untrackable";
+    const tooltipLabel = `${untrackable ? "🛑" : "📡"} ${pin.registration} (No.${pin.index})`;
     let marker = lostMarkers[pin.registration];
     if (!marker) {
-      marker = L.marker(pos, { icon: createLostPinIcon(pin.index) }).addTo(map);
+      marker = L.marker(pos, { icon: createLostPinIcon(pin.index, untrackable) }).addTo(map);
       marker.bindPopup(buildLostPopupContent(pin), { maxWidth: 280 });
       marker.bindTooltip(tooltipLabel, {
         permanent: true,
@@ -519,7 +548,7 @@ function renderLostMarkers(pins: LostAircraftPin[]) {
       lostMarkers[pin.registration] = marker;
     } else {
       marker.setLatLng(pos);
-      marker.setIcon(createLostPinIcon(pin.index));
+      marker.setIcon(createLostPinIcon(pin.index, untrackable));
       marker.setPopupContent(buildLostPopupContent(pin));
       marker.setTooltipContent(tooltipLabel);
     }
@@ -669,6 +698,17 @@ defineExpose({
 }
 .lost-popup h3 {
   color: #d32f2f;
+}
+.lost-popup.untrackable h3 {
+  color: #607d8b;
+}
+.lost-popup-note {
+  margin-top: 8px !important;
+  padding: 6px 8px;
+  background: #eceff1;
+  color: #455a64 !important;
+  border-radius: 4px;
+  font-size: 11px !important;
 }
 .flight-watch-tooltip {
   background: #111 !important;

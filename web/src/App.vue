@@ -7,8 +7,9 @@
         :watch-list="watchList"
         :spotlight-code="spotlightCode"
         :lost-aircraft="lostAircraftList"
+        :watch-tracking="tracking"
         @need-refresh="fetchFlights"
-        @add-watch="addToWatchlist"
+        @add-watch-live="onAddWatchLive"
       />
       <ControlsPanel
         :total-count="allFlights.length"
@@ -49,7 +50,7 @@ import { ApiError } from "./types/flight";
 
 const { fetchFlights: apiFetchFlights, searchByRegistration } = useFlightApi();
 const { watchList, watchStatus, addToWatchlist, removeFromWatchlist, checkWatchList } = useWatchlist();
-const { tracking, start: startWatchMonitor, stop: stopWatchMonitor } = useWatchlistMonitor(watchList);
+const { tracking, start: startWatchMonitor, stop: stopWatchMonitor, seedEntry } = useWatchlistMonitor(watchList);
 
 const mapRef = ref<InstanceType<typeof MapView> | null>(null);
 const allFlights = ref<FlightBasic[]>([]);
@@ -69,10 +70,10 @@ const filteredFlights = computed(() => {
   });
 });
 
-// 消失中(status==="lost")の機体だけを地図ピン表示用に抽出
+// 消失中(lost)または追跡不能(untrackable)の機体を地図ピン表示用に抽出
 const lostAircraftList = computed(() =>
   Object.entries(tracking)
-    .filter(([, entry]) => entry.status === "lost" && entry.lastLat !== null && entry.lastLng !== null)
+    .filter(([, entry]) => (entry.status === "lost" || entry.status === "untrackable") && entry.lastLat !== null && entry.lastLng !== null)
     .map(([registration, entry]) => ({ registration, ...entry }))
 );
 
@@ -121,6 +122,19 @@ async function onRegistrationSearch(registration: string) {
 // 位置データの鮮度に応じたマージン(km)を加味してfitさせる(ControlsPanel側で算出)
 function onFocusPosition(lat: number, lng: number, marginKm: number) {
   mapRef.value?.flyToWithMargin(lat, lng, marginKm);
+}
+
+// popupの「監視に追加」ボタンから呼ばれる。既に手元にある最新データをそのまま
+// シードするので、追加直後の無駄な即時照会が発生しない(useWatchlistMonitor側で
+// 二重照会は抑制されるが、ここで直接シードすることでもう一段確実にする)
+function onAddWatchLive(flight: FlightBasic) {
+  const hasRegistration = !!flight.registration;
+  const key = hasRegistration ? flight.registration.toUpperCase() : (flight.icao24bit || "").toUpperCase();
+  if (!key) return;
+  const added = addToWatchlist(key);
+  if (!added) return; // 上限到達 or 既に追加済み
+  const trackBy: "registration" | "icao24bit" = hasRegistration ? "registration" : "icao24bit";
+  seedEntry(key, trackBy, trackBy === "icao24bit" ? flight.icao24bit || null : null, flight);
 }
 
 onMounted(() => {

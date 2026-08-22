@@ -35,16 +35,17 @@ export function useWatchlist() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(watchList.value));
   }
 
-  function addToWatchlist(rawValue: string) {
+  function addToWatchlist(rawValue: string): boolean {
     const value = rawValue.trim().toUpperCase();
-    if (!value || watchList.value.includes(value)) return;
+    if (!value || watchList.value.includes(value)) return false;
     if (watchList.value.length >= WATCH_LIST_MAX) {
       alert(`監視できる機体は最大${WATCH_LIST_MAX}件までです`);
-      return;
+      return false;
     }
     watchList.value.push(value);
     watchStatus[value] = false;
     persist();
+    return true;
   }
 
   function removeFromWatchlist(value: string) {

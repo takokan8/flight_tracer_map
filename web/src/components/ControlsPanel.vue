@@ -42,7 +42,11 @@
           v-for="v in pagedWatchList"
           :key="v"
           class="watch-tag"
-          :class="{ active: watchStatus[v], lost: watchTracking[v]?.status === 'lost' }"
+          :class="{
+            active: watchStatus[v],
+            lost: watchTracking[v]?.status === 'lost',
+            untrackable: watchTracking[v]?.status === 'untrackable',
+          }"
         >
           {{ statusIcon(v) }}
           <button
@@ -134,6 +138,7 @@ function formatCoords(reg: string): string {
 
 function statusIcon(reg: string): string {
   const entry = props.watchTracking[reg];
+  if (entry?.status === "untrackable") return "🛑"; // 追跡不能(400km圏内で発見できず捜索終了)
   if (entry?.status === "lost") return "📡"; // 消失中(バックオフ再捜索中)
   return props.watchStatus[reg] ? "🟢" : "⚪";
 }
@@ -147,7 +152,9 @@ const NORMAL_MARGIN_KM = 100;
 const LOST_FALLBACK_MARGIN_KM = 500; // 全世界検索段階(ステップ4以降)の目安表示範囲
 
 function marginForEntry(entry: WatchTrackEntry): number {
-  if (entry.status !== "lost") return NORMAL_MARGIN_KM;
+  if (entry.status === "normal") return NORMAL_MARGIN_KM;
+  // lost(バックオフ再捜索中)・untrackable(捜索終了)はどちらも
+  // 「その半径まで探しても見つからなかった」を表すbackoffStepに応じた値を使う
   const step = BACKOFF_STEPS[Math.min(entry.backoffStep, BACKOFF_STEPS.length - 1)];
   return step.radiusKm ?? LOST_FALLBACK_MARGIN_KM;
 }
@@ -348,6 +355,12 @@ function submitAddWatch() {
   color: #d32f2f;
   font-weight: bold;
   box-shadow: 0 0 4px rgba(211, 47, 47, 0.4);
+}
+.watch-tag.untrackable {
+  background: #eceff1;
+  color: #607d8b;
+  font-weight: bold;
+  box-shadow: 0 0 4px rgba(96, 125, 139, 0.4);
 }
 .watch-tag button {
   all: unset;

@@ -78,9 +78,15 @@ function serializeFlightBasic(flight: Flight): FlightBasic {
     callsign: flight.callsign || flight.number || "",
     airline: flight.airlineIcao || flight.airlineIata || "Unknown",
     aircraft: flight.aircraftCode || "Unknown",
-    registration: flight.registration || "N/A",
-    origin: flight.originAirportIata || "N/A",
-    destination: flight.destinationAirportIata || "N/A",
+    // 注意: ここで"N/A"のような番兵文字列を入れてはいけない。不明時は空文字列
+    // のままにし、"N/A"表示はフロント側の描画時にのみ行う。過去にここへ"N/A"を
+    // 入れていたところ、registration不明の全機体が同じ文字列を共有してしまい、
+    // ウォッチリストの照合(1機だけを指すはずの一致判定)が全機体にヒットする
+    // 重大なバグになった(詳細は会話履歴参照)。
+    registration: flight.registration || "",
+    icao24bit: flight.icao24bit || "",
+    origin: flight.originAirportIata || "",
+    destination: flight.destinationAirportIata || "",
     lat: flight.latitude,
     lng: flight.longitude,
     altitude: flight.altitude,
@@ -109,8 +115,8 @@ function serializeFlightDetailed(flight: Flight, rawDetails: FlightRawDetails | 
     ...serializeFlightBasic(flight),
     airline: flight.airlineName || flight.airlineIcao || "Unknown",
     aircraft: flight.aircraftModel || flight.aircraftCode || "Unknown",
-    origin: flight.originAirportName || flight.originAirportIata || "N/A",
-    destination: flight.destinationAirportName || flight.destinationAirportIata || "N/A",
+    origin: flight.originAirportName || flight.originAirportIata || "",
+    destination: flight.destinationAirportName || flight.destinationAirportIata || "",
     origin_icao: origin.icao ?? null,
     destination_icao: destination.icao ?? null,
     origin_iata: origin.iata ?? null,
@@ -203,6 +209,49 @@ app.get(
   })
 );
 
+app.get(
+  "/api/search-by-icao",
+  withFrErrorHandling("searchByIcao24bit", async (req, res) => {
+    // registration(N/A)が取得できない機体をウォッチリスト消失検知(系統2)で
+    // 追跡するための代替エンドポイント。flightradarapiにicao24bit専用の
+    // 絞り込みパラメータは存在しないため、reg指定なしでエリア内の全機体を
+    // 取得し、こちら側でicao24bitが一致する1機だけを抽出する。
+    //
+    // 重要な制約: bounds指定なし(全世界)でこれを行うと絞り込みができない
+    // まま全世界の全機体を返すことになり負荷・検知リスクが大きすぎるため、
+    // このエンドポイントは lat/lng/radius を必須とし、エリア限定検索のみに
+    // 対応する(合意仕様: バックオフのステップ0〜3=400kmまでの範囲でのみ
+    // 追跡を試み、それでも見つからなければ追跡不能として諦める)。
+    const icao24bit = String(req.query.icao24bit || "").trim().toLowerCase();
+    if (!icao24bit) {
+      res.status(400).json({ error: "icao24bit parameter is required" });
+      return;
+    }
+
+    const lat = req.query.lat !== undefined ? parseFloat(String(req.query.lat)) : NaN;
+    const lng = req.query.lng !== undefined ? parseFloat(String(req.query.lng)) : NaN;
+    const radiusKm = req.query.radius !== undefined ? parseFloat(String(req.query.radius)) : NaN;
+    if (Number.isNaN(lat) || Number.isNaN(lng) || Number.isNaN(radiusKm) || radiusKm <= 0) {
+      res.status(400).json({ error: "lat, lng, radius parameters are required for icao24bit search" });
+      return;
+    }
+
+    const boundsParam = frApi.getBoundsByPoint(lat, lng, radiusKm * 1000);
+    const flights = await frApi.getFlights(null, boundsParam, null);
+    const match = (flights || []).find((f) => (f.icao24bit || "").toLowerCase() === icao24bit);
+
+    if (!match) {
+      res.status(404).json({
+        error: "not_found",
+        detail: `icao24bit=${icao24bit} は指定範囲内で見つかりませんでした`,
+      });
+      return;
+    }
+
+    res.json(serializeFlightBasic(match));
+  })
+);
+
 // === 機体写真(Planespotters.net 非公式API プロキシ) ===
 const PLANESPOTTERS_API_BASE = "https://api.planespotters.net/pub/photos/reg";
 const PHOTO_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24時間
@@ -256,7 +305,7 @@ async function fetchAircraftPhoto(registration: string): Promise<PhotoResult> {
 
 app.get("/api/photo/:registration", async (req, res) => {
   const reg = String(req.params.registration || "").trim().toUpperCase();
-  if (!reg || reg === "N/A") {
+  if (!reg) {
     res.json({ found: false });
     return;
   }

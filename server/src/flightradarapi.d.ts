@@ -26,6 +26,7 @@ declare module "flightradarapi" {
     aircraftCode?: string;
     aircraftModel?: string;
     registration?: string;
+    icao24bit?: string;
     originAirportIata?: string;
     originAirportIcao?: string;
     originAirportName?: string;
